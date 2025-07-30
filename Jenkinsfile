@@ -11,8 +11,8 @@ def EKS_NODE_GROUP_NAME = 'tst-eksupgdclstr-ng' // Name of your node group for t
 
 def EXISTING_VPC_ID = 'vpc-0e3e0e5f71c6d2dfb' // <<-- REPLACE with your existing VPC ID
 def EXISTING_PRIVATE_SUBNET_IDS = '["subnet-05c75af00f233a847", "subnet-0ee22c1cfa1d6fbb2", "subnet-01cb3b49d3b0228e2"]' // <<-- REPLACE with your existing private subnet IDs (comma-separated)
-def EXISTING_CLUSTER_SECURITY_GROUP_ID = 'sg-0de38d80fa2770dd5' // <<-- REPLACE with your existing cluster security group ID (if you have one for common access, else omit or let Terraform create)
-def ADDITIONAL_CLUSTER_SECURITY_GROUP_IDS = '["sg-04816159e114bc8e8"]' // Optional additional security groups for the cluster, can be left empty if not needed
+def EXISTING_CLUSTER_SECURITY_GROUP_ID = 'sg-01740cdbe884b119c' // <<-- REPLACE with your existing cluster security group ID (if you have one for common access, else omit or let Terraform create)
+def ADDITIONAL_CLUSTER_SECURITY_GROUP_IDS = '["sg-012f392beae6823e5"]' // Optional additional security groups for the cluster, can be left empty if not needed
 
 def ADDON_COREDNS_VERSION = 'v1.11.4-eksbuild.2' // Example version for EKS 1.30, check AWS docs for latest
 def ADDON_KUBE_PROXY_VERSION = 'v1.30.6-eksbuild.3' // Example, check AWS docs for latest
@@ -20,7 +20,7 @@ def ADDON_VPC_CNI_VERSION = 'v1.19.2-eksbuild.1' // Example, check AWS docs for 
 def ADDON_EBS_CSI_DRIVER_VERSION = 'v1.35.0-eksbuild.2' // Example, check AWS docs for latest
 def ADDON_EFS_CSI_DRIVER_VERSION = 'v2.1.4-eksbuild.1' // Example, check AWS docs for latest
 
-def NODE_GROUP_LAUNCH_TEMPLATE_ID = 'lt-0a614edd658f028f5' // <<-- REPLACE with your existing Launch Template ID
+def NODE_GROUP_LAUNCH_TEMPLATE_ID = 'lt-0700fb456d69d6348' // <<-- REPLACE with your existing Launch Template ID
 def NODE_GROUP_LAUNCH_TEMPLATE_VERSION = '2' // <<-- REPLACE with specific version, or '$Latest', '$Default'
 def NODE_GROUP_IAM_ROLE_ARN = 'arn:aws:iam::828692096705:role/exl-uc-devops-eks-cluster-ng-role' // <<-- REPLACE with your existing IAM role ARN for the node group
 
@@ -34,78 +34,22 @@ apiVersion: v1
 kind: Pod
 metadata:
   labels:
-    app: jenkins-agent
-    role: terraform-eks-builder
+    app: terraform-runner
 spec:
-  # This ServiceAccount must exist in the namespace where agents are deployed.
-  # It should be annotated for IRSA (IAM Roles for Service Accounts) to interact with AWS.
-  serviceAccountName: default # Or a dedicated service account like 'jenkins-eks-sa'
+  serviceAccountName: jenkins-irsa-sa
   containers:
-    - name: jnlp # Jenkins JNLP Agent
-      image: jenkins/inbound-agent:latest # Or a specific version like '4.13.2-1'
-      resources:
-        limits:
-          cpu: "1000m" # 1 CPU core
-          memory: "2Gi"
-        requests:
-          cpu: "500m" # 0.5 CPU core
-          memory: "1Gi"
+    - name: terraform-runner
+      image: amazonlinux:2
+      command: [ "sh", "-c", "cat" ]
+      tty: true
       env:
-        # Replace with your Jenkins service URL that agents can reach
-        - name: JENKINS_URL
-          value: "http://jenkins.jenkins.svc.cluster.local:8080"
+        - name: AWS_REGION
+          value: "us-east-1"
       volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent/workspace
-
-    - name: terraform # Sidecar for Terraform CLI
-      image: hashicorp/terraform:1.7.0 # Use the specific version you need (1.30.x not yet released, 1.7.x is current)
-      # Run as non-root for security
-      securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
-        allowPrivilegeEscalation: false
-      resources:
-        limits:
-          cpu: "500m"
-          memory: "512Mi"
-        requests:
-          cpu: "250m"
-          memory: "256Mi"
-      command: ["/bin/sh", "-c"] # Keep the container running
-      args: ["sleep infinity"] # Keep the container running
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent/workspace
-        - name: kubeconfig-volume # Mount for kubectl access (if Terraform uses it)
+        - name: kubeconfig-volume
           mountPath: /home/jenkins/.kube
-
-    - name: awscli-kubectl # Sidecar for AWS CLI and kubectl
-      image: public.ecr.aws/aws-cli/aws-cli:latest # Or a specific version like '2.17.0'
-      # Run as non-root for security
-      securityContext:
-        runAsUser: 1000
-        runAsGroup: 1000
-        allowPrivilegeEscalation: false
-      resources:
-        limits:
-          cpu: "500m"
-          memory: "512Mi"
-        requests:
-          cpu: "250m"
-          memory: "256Mi"
-      command: ["/bin/sh", "-c"] # Keep the container running
-      args: ["sleep infinity"] # Keep the container running
-      volumeMounts:
-        - name: workspace-volume
-          mountPath: /home/jenkins/agent/workspace
-        - name: kubeconfig-volume # Mount for kubectl to write and read config
-          mountPath: /home/jenkins/.kube
-
   volumes:
-    - name: workspace-volume # Shared volume for workspace (cloned repo, tfplan)
-      emptyDir: {}
-    - name: kubeconfig-volume # Shared volume for kubectl configuration
+    - name: kubeconfig-volume
       emptyDir: {}
             """
         }
@@ -150,22 +94,66 @@ spec:
     }
 
     stages {
+        stage('Install Tools') {
+          steps {
+            container('velero-runner') {
+              sh '''
+                echo "Installing AWS CLI, kubectl, velero, jq, gzip, tar, git..."
+                yum install -y curl unzip tar gzip jq git
+
+                # AWS CLI
+                curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                unzip awscliv2.zip && ./aws/install && rm -rf awscliv2.zip aws
+
+                # kubectl
+                curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                chmod +x kubectl && mv kubectl /usr/local/bin/
+
+                # terraform
+                yum install -y yum-utils shadow-utils
+                yum-config-manager --add-repo https://rpm.releases.hashicorp.com/AmazonLinux/hashicorp.repo
+                yum -y install terraform
+              '''
+            }
+          }
+        }
         stage('Checkout Code') {
             steps {
-                container('jnlp') { // Run this step in the JNLP agent container
+                container('terraform-runner') { // Run this step in the JNLP agent container
                     script {
                         echo "Cloning Terraform repository..."
                         // Replace 'your-git-repo-url' and 'your-branch' with your actual repository
                         // Use a Jenkins credential for Git if your repository is private
-                        git branch: 'main', credentialsId: 'PrinceGithub', url: 'https://github.com/PrinceStanley/jenkins-eks-terraform.git'
+                        git branch: 'main', credentialsId: 'PrinceGithub', url: 'https://github.com/PrinceStanley/jenkins-eks-jfrog-terraform.git'
                     }
                 }
             }
         }
 
+        stage('Configure Jfrog credentials') {
+          steps {
+            container('terraform-runner') {
+              withCredentials([string(credentialsId: 'PrinceJfrog', variable: 'TOKEN')]) {
+                sh """
+                    mkdir -p ~/.terraform.d
+                   cat <<EOF > ~/.terraform.d/credentials.tfrc.json
+{
+        "credentials": {
+                "trialdckwtg.jfrog.io": {
+                        "token": "\${TOKEN}"
+                }
+        }
+}
+EOF
+                """
+              }
+            }
+          }
+        }
+
         stage('Terraform Init') {
             steps {
-                container('terraform') { // Run this step in the Terraform sidecar
+                container('terraform-runner') { // Run this step in the Terraform sidecar
                     script {
                         echo "Initializing Terraform..."
                         // IRSA (IAM Roles for Service Accounts) is assumed for AWS authentication.
@@ -181,7 +169,7 @@ spec:
         stage('Plan') {
             when { expression { "${params.ACTION}" != 'destroy' } } // Don't plan if destroying, destroy command does its own plan
             steps {
-                container('terraform') { // Run this step in the Terraform sidecar
+                container('terraform-runner') { // Run this step in the Terraform sidecar
                     script {
                         echo "Generating Terraform plan..."
                         sh "terraform plan -out=tfplan"
@@ -196,11 +184,11 @@ spec:
                 script { // Use a script block for conditional logic
                     // Install EKS Cluster
                     input message: "Proceed with EKS cluster installation for '${EKS_CLUSTER_NAME}' (v${EKS_KUBERNETES_VERSION})?", ok: 'Install'
-                    container('terraform') {
+                    container('terraform-runner') {
                         echo "Applying Terraform to install EKS cluster..."
                         sh "terraform apply -auto-approve tfplan"
                     }
-                    container('awscli-kubectl') { // Use awscli-kubectl for AWS CLI commands
+                    container('terraform-runner') { // Use awscli-kubectl for AWS CLI commands
                         echo "Updating Kubeconfig for new cluster..."
                         sh "KUBECONFIG=/home/jenkins/.kube/config aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER_NAME}"
                     }
@@ -218,18 +206,18 @@ spec:
                 }
                 input message: "Proceed with EKS cluster upgrade for '${EKS_CLUSTER_NAME}' to v${params.CLUSTER_VERSION_TO_UPGRADE_TO}? This will upgrade both the control plane and node group, and addons.", ok: 'Upgrade'
 
-                container('terraform') {
+                container('terraform-runner') {
                     echo "Upgrading EKS Control Plane to Kubernetes v${params.CLUSTER_VERSION_TO_UPGRADE_TO}..."
                     // Pass the upgrade version to Terraform environment variables explicitly
                     sh "export TF_VAR_kubernetes_version=${params.CLUSTER_VERSION_TO_UPGRADE_TO} && terraform apply -auto-approve -target=module.eks"
                 }
 
-                container('awscli-kubectl') {
+                container('terraform-runner') {
                     echo "Updating Kubeconfig for new cluster version after control plane upgrade..."
                     sh "KUBECONFIG=/home/jenkins/.kube/config aws eks update-kubeconfig --region ${AWS_REGION} --name ${EKS_CLUSTER_NAME}"
                 }
 
-                container('terraform') {
+                container('terraform-runner') {
                     echo "Performing Node Group Rolling Update (Blue/Green for 1 node) and upgrading addons..."
                     // Pass the upgrade version for the node group and addons
                     // The 'update_config' in Terraform for the node group ensures new node comes up first.
@@ -248,7 +236,7 @@ spec:
                         error("Destroy action requires 'CONFIRM_DESTROY' to be checked.")
                     }
                     input message: "ARE YOU ABSOLUTELY SURE YOU WANT TO DESTROY EKS CLUSTER '${EKS_CLUSTER_NAME}'? This is irreversible!", ok: 'Destroy'
-                    container('terraform') {
+                    container('terraform-runner') {
                         echo "Destroying EKS cluster..."
                         sh "terraform destroy -auto-approve"
                     }
@@ -258,7 +246,7 @@ spec:
 
         stage('Cleanup (Optional)') {
             steps {
-                container('jnlp') { // Can run in any container, JNLP is fine for basic file ops
+                container('terraform-runner') { // Can run in any container, JNLP is fine for basic file ops
                     echo "Cleaning up workspace..."
                     sh "rm -f tfplan || true" // Remove the Terraform plan file
                 }
