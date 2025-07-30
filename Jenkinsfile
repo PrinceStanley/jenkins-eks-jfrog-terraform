@@ -4,7 +4,7 @@
 // IMPORTANT: DO NOT hardcode sensitive values here. Use Jenkins Credentials or IRSA.
 def AWS_REGION = 'us-east-1' // Example region, change as needed
 def TF_STATE_BUCKET = 'n8n-sb1-bucket001' // Replace with your S3 bucket name
-def TF_STATE_LOCK_TABLE = 'test-eks-upgrade-lock-table' // Replace with your DynamoDB table name
+def TF_STATE_LOCK_TABLE = 'test-eks-upgrade-cluster-lock-table' // Replace with your DynamoDB table name
 def EKS_CLUSTER_NAME = 'test-eks-upgrade-cluster' // Name of your EKS cluster
 def EKS_KUBERNETES_VERSION = '1.30' // Target EKS Kubernetes version
 def EKS_NODE_GROUP_NAME = 'tst-eksupgdclstr-ng' // Name of your node group for the cluster
@@ -157,7 +157,7 @@ EOF
                         // The 'aws-cli' container runs first in 'Apply' stage to set up kubeconfig,
                         // ensuring Terraform's AWS provider can authenticate correctly if needed for initial calls.
                         // Ensure your Jenkins agent's Service Account has an IAM role attached via IRSA with permissions.
-                        sh "terraform init -backend-config=\"bucket=${TF_STATE_BUCKET}\" -backend-config=\"key=eks/${EKS_CLUSTER_NAME}/terraform.tfstate\" -backend-config=\"dynamodb_table=${TF_STATE_LOCK_TABLE}\" -backend-config=\"region=${AWS_REGION}\""
+                        sh "terraform init -backend-config=\"bucket=${TF_STATE_BUCKET}\" -backend-config=\"key=jfrog-eks/${EKS_CLUSTER_NAME}/terraform.tfstate\" -backend-config=\"dynamodb_table=${TF_STATE_LOCK_TABLE}\" -backend-config=\"region=${AWS_REGION}\""
                     }
                 }
             }
