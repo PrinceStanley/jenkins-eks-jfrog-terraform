@@ -83,7 +83,7 @@ variable "node_group_launch_template_id" {
 variable "node_group_launch_template_version" {
   description = "The version of the Launch Template to use. Can be '$Latest', '$Default', or a specific version number."
   type        = string
-  default     = "2"
+  default     = "1"
 }
 
 variable "node_group_iam_role_arn" {
