@@ -13,7 +13,7 @@ provider "aws" {
 terraform {
   backend "s3" {
     bucket         = "n8n-sb1-bucket001"
-    key            = "eks/test-eks-upgrade-cluster/terraform.tfstate"
+    key            = "jfrog-eks/test-eks-upgrade-cluster/terraform.tfstate"
     dynamodb_table = "test-eks-upgrade-cluster-lock-table"
     region         = "us-east-1"
     encrypt        = true
