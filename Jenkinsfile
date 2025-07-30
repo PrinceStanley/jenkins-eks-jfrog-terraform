@@ -42,9 +42,6 @@ spec:
       image: amazonlinux:2
       command: [ "sh", "-c", "cat" ]
       tty: true
-      env:
-        - name: AWS_REGION
-          value: "us-east-1"
       volumeMounts:
         - name: kubeconfig-volume
           mountPath: /home/jenkins/.kube
