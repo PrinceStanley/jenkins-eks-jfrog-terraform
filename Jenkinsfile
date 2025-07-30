@@ -93,7 +93,7 @@ spec:
     stages {
         stage('Install Tools') {
           steps {
-            container('velero-runner') {
+            container('terraform-runner') {
               sh '''
                 echo "Installing AWS CLI, kubectl, velero, jq, gzip, tar, git..."
                 yum install -y curl unzip tar gzip jq git
