@@ -36,7 +36,7 @@ metadata:
   labels:
     app: terraform-runner
 spec:
-  serviceAccountName: jenkins-irsa-sa
+  serviceAccountName: jenkins-pipeline
   containers:
     - name: terraform-runner
       image: amazonlinux:2
