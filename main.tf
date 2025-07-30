@@ -46,7 +46,7 @@ data "aws_vpc" "selected" {
 
 // EKS Cluster Module
 module "eks" {
-  source  = "terraform-aws-modules/eks/aws"
+  source  = "trialdckwtg.jfrog.io/terraform-module__jfrog/terraform-aws-eks/aws"
   version = "20.36.0" # Make sure to check the latest version supporting EKS 1.30 (might be v20+)
 
   cluster_name    = var.cluster_name
