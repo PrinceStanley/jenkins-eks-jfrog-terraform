@@ -1,0 +1,91 @@
+Prepared By:
+
+[Your Name / Team Name]
+1. Executive Summary
+
+SonarQube deployed on Amazon EKS encountered recurring failures in its embedded Elasticsearch service. The pod logs showed errors related to Elasticsearch being unable to retrieve cluster stats, primarily due to underlying file system issues. These problems were traced to the use of Amazon EFS as the persistent volume for SonarQube. Once the volume was migrated to an Amazon EBS block storage (gp3), the errors were fully resolved. This RCA outlines the root cause, investigation steps, corrective actions, and preventive measures to avoid recurrence.
+2. Impact
+
+    Affected System: SonarQube deployment on EKS
+
+    Error Observed:
+
+        InternalClusterInfoService failed to retrieve stats for node
+
+        java.nio.file.FileSystemException: .../global-721.st: Input/output error
+
+    Impact Duration: [Insert Timeframe]
+
+    Users Affected: Development teams relying on SonarQube for code analysis and quality gates
+
+    Severity Level: High
+
+3. Root Cause
+
+The issue was caused by incompatible storage behavior between Amazon EFS (NFS-based) and Elasticsearch (used by SonarQube). EFS does not support reliable file locking and exhibits high metadata latency, both of which are incompatible with Elasticsearch's use of the Lucene index engine. Elasticsearch expects consistent, low-latency file access with locking guarantees — conditions not met by EFS, leading to file I/O errors and failures in internal cluster stat collection.
+4. Contributing Factors
+
+    Use of EFS with RWX for a single-pod workload: EFS was chosen for its shared access capability, but SonarQube runs as a single instance with no RWX requirement.
+
+    Helm default persistence configuration not aligned with workload I/O characteristics
+
+    Lack of prior validation on EFS compatibility with Elasticsearch/Lucene
+
+5. Timeline
+Time	Event
+T0	SonarQube pod enters degraded state; fails health checks intermittently
+T0+1h	Errors observed in logs pointing to Elasticsearch failure retrieving node stats
+T0+2h	Initial tuning (JVM options) attempted without resolution
+T0+3h	Manual checks reveal consistent I/O errors on Elasticsearch data directory backed by EFS
+T0+4h	PVC replaced with EBS-based storage; pod redeployed
+T0+5h	Elasticsearch starts cleanly; SonarQube stabilized with no further errors
+6. Troubleshooting Steps Performed
+
+    Reviewed Pod Logs
+    Identified repeated failures from InternalClusterInfoService, along with I/O errors on Lucene index files.
+
+    Inspected PVC Mount and Volume State
+
+        Confirmed volume was mounted as expected.
+
+        Verified permissions and access rights.
+
+    Tested JVM/Resource Adjustments
+
+        Increased memory and tuned SONARQUBE_WEB_JVM_OPTS (no change in behavior).
+
+    Hypothesized Storage Backend Incompatibility
+
+        Researched known Elasticsearch/EFS incompatibility (file locking, NFS latency, metadata issues).
+
+    Switched to EBS-backed Volume
+
+        Updated Helm chart to use gp3 EBS PVC (ReadWriteOnce).
+
+        Redeployed SonarQube with same configuration.
+
+        Elasticsearch initialized successfully; no further file errors observed.
+
+7. Resolution
+
+Replaced EFS-based persistent volume with an EBS (gp3) volume for SonarQube deployment, resolving the storage-related issues with Elasticsearch. The service has remained stable since the change.
+8. Corrective and Preventive Actions (CAPA)
+✅ Immediate Fixes
+
+    Switched SonarQube persistent storage from EFS to EBS (gp3).
+
+    Verified Elasticsearch integrity after storage change and reindexing.
+
+🔒 Preventive Measures
+Action	Owner	Status
+Document storage compatibility matrix for stateful workloads (e.g., Elasticsearch, PostgreSQL, etc.)	DevOps	✅ Completed
+Enforce use of EBS for SonarQube and other Lucene-based apps in Helm defaults or CI/CD pipelines	DevOps	✅ Completed
+Educate engineering teams on differences between EFS and EBS in context of I/O-sensitive apps	Platform Team	✅ Completed
+Implement storage validation checks in deployment pipeline (warn on EFS use for incompatible apps)	DevSecOps	🚧 In Progress
+9. Lessons Learned
+
+    Not all storage types are compatible with all application workloads — especially those relying on low-level file operations like Elasticsearch/Lucene.
+
+    EFS’s benefits (shared access) do not apply to all use cases and can introduce subtle, hard-to-debug performance issues.
+
+    Helm charts and templates must explicitly define storage requirements based on application behavior.
