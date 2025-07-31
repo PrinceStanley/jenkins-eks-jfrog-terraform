@@ -20,7 +20,7 @@ def ADDON_VPC_CNI_VERSION = 'v1.19.2-eksbuild.1' // Example, check AWS docs for 
 def ADDON_EBS_CSI_DRIVER_VERSION = 'v1.35.0-eksbuild.2' // Example, check AWS docs for latest
 def ADDON_EFS_CSI_DRIVER_VERSION = 'v2.1.4-eksbuild.1' // Example, check AWS docs for latest
 
-def NODE_GROUP_LAUNCH_TEMPLATE_ID = 'lt-0700fb456d69d6348' // <<-- REPLACE with your existing Launch Template ID
+def NODE_GROUP_LAUNCH_TEMPLATE_ID = 'lt-0838971151ad623cf' // <<-- REPLACE with your existing Launch Template ID
 def NODE_GROUP_LAUNCH_TEMPLATE_VERSION = '1' // <<-- REPLACE with specific version, or '$Latest', '$Default'
 def NODE_GROUP_IAM_ROLE_ARN = 'arn:aws:iam::828692096705:role/exl-uc-devops-eks-cluster-ng-role' // <<-- REPLACE with your existing IAM role ARN for the node group
 
